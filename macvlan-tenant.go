@@ -37,7 +37,7 @@ const (
 type NetConf struct {
 	types.NetConf
 	Manage string `json:"manage"`
-	Master string `json:"master"`
+	Service string `json:"service"`
 	Mode   string `json:"mode"`
 	MTU    int    `json:"mtu"`
 }
@@ -59,8 +59,8 @@ func loadConf(bytes []byte) (*NetConf, string, error) {
 	if err := json.Unmarshal(bytes, n); err != nil {
 		return nil, "", fmt.Errorf("failed to load netconf: %v", err)
 	}
-	if n.Master == "" {
-		return nil, "", fmt.Errorf(`"master" field is required.`)
+	if n.Service == "" {
+		return nil, "", fmt.Errorf(`"service" field is required.`)
 	}
 	return n, n.CNIVersion, nil
 }
@@ -209,7 +209,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	var parentIf string
 	if ibmvlanid != "" {
-		parentIf = n.Master + "." + ibmvlanid
+		parentIf = n.Service + "." + ibmvlanid
 	} else {
 		parentIf = n.Manage
 	}
