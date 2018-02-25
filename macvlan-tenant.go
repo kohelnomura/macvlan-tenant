@@ -143,6 +143,58 @@ func createMacvlan(conf *NetConf, ifName string, netns ns.NetNS, parentIf string
 	return macvlan, nil
 }
 
+func setupVeth(netns ns.NetNS, br *netlink.Bridge, ifName string, mtu int, hairpinMode bool) (*current.Interface, *current.Interface, error) {
+	contIface := &current.Interface{}
+	hostIface := &current.Interface{}
+
+	err := netns.Do(func(hostNS ns.NetNS) error {
+		// create the veth pair in the container and move host end into host netns
+		hostVeth, containerVeth, err := ip.SetupVeth(ifName, mtu, hostNS)
+		if err != nil {
+			return err
+		}
+		contIface.Name = containerVeth.Name
+		contIface.Mac = containerVeth.HardwareAddr.String()
+		contIface.Sandbox = netns.Path()
+		hostIface.Name = hostVeth.Name
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// need to lookup hostVeth again as its index has changed during ns move
+	hostVeth, err := netlink.LinkByName(hostIface.Name)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to lookup %q: %v", hostIface.Name, err)
+	}
+	hostIface.Mac = hostVeth.Attrs().HardwareAddr.String()
+
+	// connect host veth end to the bridge
+	if err := netlink.LinkSetMaster(hostVeth, br); err != nil {
+		return nil, nil, fmt.Errorf("failed to connect %q to bridge %v: %v", hostVeth.Attrs().Name, br.Attrs().Name, err)
+	}
+
+	// set hairpin mode
+	if err = netlink.LinkSetHairpin(hostVeth, hairpinMode); err != nil {
+		return nil, nil, fmt.Errorf("failed to setup hairpin mode for %v: %v", hostVeth.Attrs().Name, err)
+	}
+
+	return hostIface, contIface, nil
+}
+
+func bridgeByName(name string) (*netlink.Bridge, error) {
+	l, err := netlink.LinkByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("could not lookup %q: %v", name, err)
+	}
+	br, ok := l.(*netlink.Bridge)
+	if !ok {
+		return nil, fmt.Errorf("%q already exists but is not a bridge", name)
+	}
+	return br, nil
+}
+
 func cmdAdd(args *skel.CmdArgs) error {
 	n, cniVersion, err := loadConf(args.StdinData)
 	if err != nil {
@@ -208,12 +260,23 @@ func cmdAdd(args *skel.CmdArgs) error {
 		}
 	}
 	var parentIf string
+	var resultInterface *current.Interface
 	if ibmvlanid != "" {
 		parentIf = n.Service + "." + ibmvlanid
+		resultInterface, err = createMacvlan(n, args.IfName, netns, parentIf)
 	} else {
-		parentIf = n.Manage
+		br, err := bridgeByName(n.Manage)
+		if err != nil {
+			return err
+		}
+		// hostInterface, containerInterface, err := setupVeth(netns, br, args.IfName, n.MTU, n.HairpinMode)
+		_, resultInterface, err = setupVeth(netns, br, args.IfName, n.MTU, false)
+		if err != nil {
+			return err
+		}
+
 	}
-	macvlanInterface, err := createMacvlan(n, args.IfName, netns, parentIf)
+	
 
 	if err != nil {
 		return err
@@ -253,7 +316,7 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if len(result.IPs) == 0 {
 		return errors.New("IPAM plugin returned missing IP config")
 	}
-	result.Interfaces = []*current.Interface{macvlanInterface}
+	result.Interfaces = []*current.Interface{resultInterface}
 
 	for _, ipc := range result.IPs {
 		ipc.Interface = current.Int(0)
