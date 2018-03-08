@@ -223,27 +223,31 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pods, err := client.CoreV1().Pods("").List(meta_v1.ListOptions{})
+	
+	pod, err := client.CoreV1().Pods("default").Get(json.Config.Hostname, meta_v1.GetOptions{})
 	if err != nil {
 		log.Fatal(err)
 	}
-	var ibmvlanid string
-	var ibmip string
+	//var ibmvlanid string
+	//var ibmip string
 	//var ibmgw string
-	var routesArray []string
-	for _, pod := range pods.Items {
-		if pod.Name == json.Config.Hostname {
-			//if pod.Name == "busybox1" {
-			ibmvlanid = pod.Annotations["ccc.ibm.co.jp/vlanid"]
-			ibmip = pod.Annotations["ccc.ibm.co.jp/ip"]
-			routesArray = strings.Split(pod.Annotations["ccc.ibm.co.jp/routes"], ";")
-			//			ibmgw = pod.Annotations["ccc.ibm.co.jp/gw"]
-			logger.Printf("[NOMURA] !trace vlanid >>>>>>>>>>>>>>>>>>>>>----------%v\n", ibmvlanid)
-			logger.Printf("[NOMURA] !trace ip >>>>>>>>>>>>>>>>>>>>>----------%v\n", ibmip)
-			logger.Printf("[NOMURA] !trace route >>>>>>>>>>>>>>>>>>>>>----------%v\n", routesArray)
-			//			logger.Printf("[NOMURA] !trace gw >>>>>>>>>>>>>>>>>>>>>----------%v\n", ibmgw)
+	//var routesArray []string
+	ibmvlanid := pod.Annotations["ccc.ibm.co.jp/vlanid"]
+	ibmip := pod.Annotations["ccc.ibm.co.jp/ip"]
+	routesStr := pod.Annotations["ccc.ibm.co.jp/routes"]
+	if ibmvlanid == "" {
+		if routesStr == "" {
+			routesStr = "10.32.0.0/24->" + pod.Status.HostIP + "/16"
+		} else {
+			routesStr += ";" + "10.32.0.0/24->" + pod.Status.HostIP + "/16"
 		}
 	}
+	routesArray := strings.Split(routesStr, ";")
+	//			ibmgw = pod.Annotations["ccc.ibm.co.jp/gw"]
+	logger.Printf("[NOMURA] !trace vlanid >>>>>>>>>>>>>>>>>>>>>----------%v\n", ibmvlanid)
+	logger.Printf("[NOMURA] !trace ip >>>>>>>>>>>>>>>>>>>>>----------%v\n", ibmip)
+	logger.Printf("[NOMURA] !trace route >>>>>>>>>>>>>>>>>>>>>----------%v\n", routesArray)
+	
 
 	var routes []*types.Route
 	for i := 0; i < len(routesArray); i++ {
