@@ -228,22 +228,12 @@ func cmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//var ibmvlanid string
-	//var ibmip string
-	//var ibmgw string
-	//var routesArray []string
+	
 	ibmvlanid := pod.Annotations["ccc.ibm.co.jp/vlanid"]
 	ibmip := pod.Annotations["ccc.ibm.co.jp/ip"]
 	routesStr := pod.Annotations["ccc.ibm.co.jp/routes"]
-	if ibmvlanid == "" {
-		if routesStr == "" {
-			routesStr = "10.32.0.0/24->" + pod.Status.HostIP + "/16"
-		} else {
-			routesStr += ";" + "10.32.0.0/24->" + pod.Status.HostIP + "/16"
-		}
-	}
-	routesArray := strings.Split(routesStr, ";")
-	//			ibmgw = pod.Annotations["ccc.ibm.co.jp/gw"]
+	finalRoutes := strings.Replace(routesStr, "HOSTIP", pod.Status.HostIP, -1)
+	routesArray := strings.Split(finalRoutes, ";")
 	logger.Printf("[NOMURA] !trace vlanid >>>>>>>>>>>>>>>>>>>>>----------%v\n", ibmvlanid)
 	logger.Printf("[NOMURA] !trace ip >>>>>>>>>>>>>>>>>>>>>----------%v\n", ibmip)
 	logger.Printf("[NOMURA] !trace route >>>>>>>>>>>>>>>>>>>>>----------%v\n", routesArray)
